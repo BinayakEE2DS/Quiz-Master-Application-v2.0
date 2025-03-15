@@ -29,6 +29,14 @@ class User(db.Model, UserMixin):
     # Relationship with Role (many-to-many)
     roles = db.relationship('Role', secondary='user_roles', back_populates='users')
 
+    def get_auth_token(self):
+        """Fixed token generation with proper serializer"""
+        from flask_security import login_serializer
+        from flask import current_app
+        
+        return login_serializer.dumps({'user_id': self.id},current_app.config['SECRET_KEY'])
+    
+
 # Data table for available roles:
 class Role(db.Model, RoleMixin):
     __tablename__ = 'role'

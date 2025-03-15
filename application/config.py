@@ -13,3 +13,4 @@ class LocalDevelopmentConfig(Config):
     SECURITY_PASSWORD_SALT = "this-is-a-password-salt" # helps in hashing in password
     WTF_CSRF_ENABLED = False
     SECURITY_TOKEN_AUTHENTICATION_HEADER = "Authentication-Token"
+    SECURITY_TOKEN_MAX_AGE = 3600  # 1 hour expiration time

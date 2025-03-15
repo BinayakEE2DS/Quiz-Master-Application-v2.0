@@ -1,15 +1,16 @@
 from .database import db 
-from datetime import datetime,date
 from application.models import *
+from datetime import datetime
+from datetime import date
 from flask import current_app as app, jsonify,Flask , request, render_template , redirect
-from flask_security import Security, SQLAlchemyUserDatastore
+from flask_security import Security, SQLAlchemyUserDatastore, hash_password
 from sqlalchemy import and_, or_, func
 from flask_security import auth_required, roles_required, current_user, login_user
 from werkzeug.security import check_password_hash, generate_password_hash
 import matplotlib.pyplot as plt
 import numpy as np
 import os
- 
+
 
 ############################################ ROUTE FUNCTIONALITIES COMMON FOR ADMIN/USER ###########################################
 
@@ -19,49 +20,60 @@ import os
 def home():
      return render_template('index.html')
 
-
-# Routing for user/admin login page 
+# Routing for user/admin login operation
 
 @app.route('/login', methods=['POST'])
 def user_login():
-    body = request.get_json()
-    email = body.get('email')
-    password = body.get('password')
+    try:
+        # Request validation for debugging purposes
+        print(f"Request headers: {request.headers}")
+        print(f"Request data type: {type(request.data)}")
+        print(f"Raw request data: {request.data}")
 
-    if not email or not password:
-        return jsonify({
-            "message": "Email and password are required!"
-        }), 400
-    
-    user = app.security.datastore.find_user(email=email)
+        body = request.get_json()
+        email = body.get('email')
+        password = body.get('password')
 
-    if user:
-        if check_password_hash(user.password, password):
-            # Log in the user
-            login_user(user)
-            
-            # Generate an authentication token
-            auth_token = user.get_auth_token()
-            
-            # Get the user's roles
-            roles = [role.name for role in user.roles]
-            
-            return jsonify({
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "roles": roles,
-                "auth-token": auth_token
-            })
-        else:
-            return jsonify({
-                "message": "Incorrect password!"
-            }), 400
-    else:
+        if not email or not password:
+            return jsonify({"message": "Email and password are required!"}), 400
+
+        # Debug log: Login attempt
+        print(f"Login attempt for: {email}")
+
+        user = app.security.datastore.find_user(email=email)
+        
+        # Debug log: User active status
+        print(f"User active status: {user.active if user else 'No user'}")
+        
+        if not user:
+            return jsonify({"message": "User not found!"}), 404
+
+        # Verify password using Flask-Security's helper
+        verification_result = app.security.datastore.verify_password(password, user)
+        print(f"Password verification: {verification_result}")
+
+        if not verification_result:
+            # Additional debugging for password mismatch
+            print(f"Compare '{password}' with hash: {user.password}")
+            print(f"Hash matches: {check_password_hash(user.password, password)}")
+            return jsonify({"message": "Incorrect password!"}), 400
+
+        # Generate proper security token
+        auth_token = user.get_auth_token()
+        
+        # Get roles
+        roles = [role.name for role in user.roles]
+
         return jsonify({
-            "message": "User not found!"
-        }), 404
-    
+            "id": user.id,
+            "email": user.email,
+            "roles": roles,
+            "auth-token": auth_token
+        }), 200
+
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({"message": "Server error during login"}), 500
 
 
 # Routing for user/admin logout operation
@@ -81,37 +93,53 @@ def user_logout():
 
 @app.route('/register', methods=['POST'])
 def create_user():
-    credentials = request.get_json()
-    
-    # Check if the user already exists
-    if not app.security.datastore.find_user(email=credentials["email"]):
-        # Create the user
+    try:
+        credentials = request.get_json()
+        if not credentials:
+            return jsonify({"message": "Missing JSON data"}), 400
+
+        # Validate required fields
+        required_fields = ['email', 'username', 'password', 'date_of_birth', 'qualification', 'fullname']
+        missing = [field for field in required_fields if field not in credentials]
+        if missing:
+            return jsonify({"message": f"Missing fields: {', '.join(missing)}"}), 400
+
+        # Validate date format
+        try:
+            dob = datetime.strptime(credentials["date_of_birth"], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"message": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+        # Check existing user
+        if app.security.datastore.find_user(email=credentials["email"]):
+            return jsonify({"message": "User already exists!"}), 400
+        
+
+        # Create new user
         new_user = app.security.datastore.create_user(
             email=credentials["email"],
             username=credentials["username"],
-            password=generate_password_hash(credentials["password"]),
-            date_of_birth=datetime.strptime(credentials["date_of_birth"], '%Y-%m-%d').date(),
+            password=hash_password(credentials["password"]),
+            date_of_birth=dob,
             qualification=credentials["qualification"],
             fullname=credentials["fullname"],
-            active=True  # Ensures the user is active
+            active=True
         )
-        
-        # Find or create the 'user' role
+
+        # Handle roles
         user_role = app.security.datastore.find_or_create_role(name="user", description="Regular user")
-        
-        # Assign the 'user' role to the new user
         app.security.datastore.add_role_to_user(new_user, user_role)
-        
-        # Commit changes to the database
-        db.session.commit()
-        
-        return jsonify({
-            "message": "User created successfully"
-        }), 201
-    
-    return jsonify({
-        "message": "User already exists!"
-    }), 400
+
+        # Commit with error handling
+        try:
+            db.session.commit()
+            return jsonify({"message": "User created successfully"}), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"message": f"Database error: {str(e)}"}), 500
+
+    except Exception as e:
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 
 ############################################ ROUTE FUNCTIONALITIES FOR ADMIN ###########################################
@@ -549,6 +577,7 @@ def delete_quiz(quiz_id):
     
 
 
+
 # Routing to implement new question functionality in admin quiz management page
 
 @app.route('/create_new_question/<int:quiz_id>', methods=['GET', 'POST'])
@@ -860,7 +889,7 @@ def user_dashboard():
 
     # Update QuizStatus for expired quizzes
     for quiz in quizzes:
-        if quiz.date_of_quiz < date.today():  # Check if the quiz date has passed
+        if (quiz.date_of_quiz < date.today()):  # Check if the quiz date has passed
             quiz_status = QuizStatus.query.filter_by(user_id=user_id, quiz_id=quiz.id).first()
             if quiz_status and quiz_status.status == 'unattempted':
                 quiz_status.status = 'quiz expired'

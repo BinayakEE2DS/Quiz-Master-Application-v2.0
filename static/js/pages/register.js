@@ -1,6 +1,6 @@
 const Register = {
     template: `
-      <div>
+<div>
         <div class="card">
           <div class="card-body">
             <div class="d-flex justify-content-end">
@@ -87,19 +87,17 @@ const Register = {
         }
       },
       async register() {
-        if (!this.validateEmail()) {
-          return;
-        }
+        if (!this.validateEmail()) return;
+        
         if (!this.username || !this.email || !this.password || !this.fullname || !this.qualification || !this.date_of_birth) {
           this.message = 'All fields are required!';
           return;
         }
+
         try {
           const response = await fetch('/register', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               username: this.username,
               email: this.email,
@@ -109,7 +107,16 @@ const Register = {
               date_of_birth: this.date_of_birth,
             }),
           });
+
+          // Handle non-JSON responses
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            throw new Error(`Server error: ${text.substring(0, 100)}`);
+          }
+
           const data = await response.json();
+          
           if (response.ok) {
             alert(data.message);
             this.$router.push('/login');
@@ -117,8 +124,8 @@ const Register = {
             this.message = data.message || 'Registration failed. Please try again.';
           }
         } catch (error) {
-          console.error('Error during registration:', error);
-          this.message = 'An error occurred during registration. Please try again.';
+          console.error('Registration error:', error);
+          this.message = error.message || 'An error occurred during registration. Please try again.';
         }
       },
     },

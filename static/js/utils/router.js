@@ -52,13 +52,22 @@ const router = new VueRouter({
 // Navigation guard for authentication and role-based access
 router.beforeEach((to, from, next) => {
     const isAuthenticated = localStorage.getItem('auth-token');
-    const userRoles = JSON.parse(localStorage.getItem('roles'));
+    const rolesString = localStorage.getItem('roles');
+    let userRoles = [];
+
+    if (rolesString) {
+        try {
+            userRoles = JSON.parse(rolesString);
+        } catch (e) {
+            console.error('Error parsing roles from localStorage', e);
+        }
+    }
 
     if (to.meta.requiresAuth && !isAuthenticated) {
         next('/login');
-    } else if (to.meta.requiresAdmin && !userRoles?.includes('admin')) {
+    } else if (to.meta.requiresAdmin && (!userRoles || !userRoles.includes('admin'))) {
         next('/');
-    } else if (to.meta.requiresUser && !userRoles?.includes('user')) {
+    } else if (to.meta.requiresUser && (!userRoles || !userRoles.includes('user'))) {
         next('/');
     } else {
         next();

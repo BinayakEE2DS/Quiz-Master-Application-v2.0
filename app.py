@@ -1,17 +1,23 @@
 from flask import Flask
+from flask_cors import CORS 
 from application.database import db
 from application.models import User, Role
 from application.resources import api
 from application.config import LocalDevelopmentConfig
-from flask_security import Security, SQLAlchemyUserDatastore
-from datetime import datetime, date
-from flask_security import hash_password
+from flask_security import Security, SQLAlchemyUserDatastore ,hash_password 
+from datetime import datetime, date 
+from werkzeug.security import check_password_hash, generate_password_hash
 
 def create_app():
-    app = Flask(__name__,static_folder="static")
+    app = Flask(__name__, static_folder="static", template_folder="templates", static_url_path="/static")
     app.config.from_object(LocalDevelopmentConfig)
+    
+    # Initialize extensions
     db.init_app(app)
     api.init_app(app)
+    
+    # Initialize CORS with wide-open configuration
+    CORS(app, resources={r"/*": {"origins": "*"}})  
     
     # Initialize Flask-Security
     datastore = SQLAlchemyUserDatastore(db, User, Role)
@@ -41,7 +47,8 @@ with app.app_context():
             password=hash_password("1234"),
             date_of_birth=datetime.strptime("1980-01-01", '%Y-%m-%d').date(),
             qualification="MBA",
-            fullname="KOUSHIK ROY"
+            fullname="KOUSHIK ROY",
+            active=True
         )
         # Assign the 'admin' role to the admin user
         app.security.datastore.add_role_to_user(admin_user, admin_role)
@@ -54,7 +61,8 @@ with app.app_context():
             password=hash_password("1234"),
             date_of_birth=datetime.strptime("2000-01-01", '%Y-%m-%d').date(),
             qualification="H.S",
-            fullname="PALASH DEY"
+            fullname="PALASH DEY",
+            active=True
         )
         # Assign the 'user' role to the regular user
         app.security.datastore.add_role_to_user(regular_user, user_role)
